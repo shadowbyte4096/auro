@@ -23,4 +23,5 @@ class item_sensor_filters(Node):
         self.nearest_blue_publisher = self.create_publisher(ItemList, 'items/blue', 10)
 
     def item_callback(self, items):
+        return
         

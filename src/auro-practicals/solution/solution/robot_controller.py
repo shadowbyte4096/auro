@@ -5,9 +5,11 @@ from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
 from rclpy.executors import ExternalShutdownException
 from rclpy.qos import QoSPresetProfiles
+from enum import Enum
 
 from assessment_interfaces.msg import Item, ItemList
 from assessment_interfaces.msg import HomeZone
+from assessment_interfaces.msg import ItemHolder, ItemHolders
 from geometry_msgs.msg import Twist, Pose
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
@@ -37,6 +39,8 @@ class RobotController(Node):
         self.yaw = 0.0
         self.items = []
         self.homeMessage = HomeZone()
+        self.nearest_item = None
+        self.holding_ball = False
         
         self.item_subscriber = self.create_subscription(
             ItemList,
@@ -51,23 +55,38 @@ class RobotController(Node):
             'odom',
             self.odom_callback,
             10)
+        
+        self.odom_subscriber = self.create_subscription(
+            ItemHolders,
+            'item_holders',
+            self.item_holder_callback,
+            10)
 
         self.timer_period = 0.1 # 100 milliseconds = 10 Hz
         self.timer = self.create_timer(self.timer_period, self.control_loop)
 
     def odom_callback(self, msg):
-        (roll, pitch, yaw) = euler_from_quaternion([self.pose.orientation.x,
-                                                    self.pose.orientation.y,
-                                                    self.pose.orientation.z,
-                                                    self.pose.orientation.w])
+        (roll, pitch, yaw) = euler_from_quaternion([msg.pose.pose.orientation.x,
+                                                    msg.pose.pose.orientation.y,
+                                                    msg.pose.pose.orientation.z,
+                                                    msg.pose.pose.orientation.w])
         
-        self.yaw = yaw
+        self.yaw = yaw * 144
 
     def item_callback(self, items):
         self.nearest_item = None
-        for item in items:
-            if item.diameter > self.nearest_item.diameter:
+        for item in items.data:
+            if self.nearest_item == None:
                 self.nearest_item = item
+            elif item.diameter > self.nearest_item.diameter:
+                self.nearest_item = item
+    
+    def item_holder_callback(self, msg):
+        holders = msg.data
+        self.holding_ball = False
+        for holder in holders:
+            if holder.holding_item:
+                self.holding_ball = True
 
     def spawn_callback(self, msg):
         self.homeMessage = msg
@@ -78,25 +97,29 @@ class RobotController(Node):
             case State.LOOKING_FOR_BALL:
                 if self.nearest_item == None:
                     msg = Twist()
-                    msg.angular.z = 1
+                    msg.angular.z = 3.0
                     self.cmd_vel_publisher.publish(msg)
                 else:
-                    self.goal = self.yaw + self.nearest_item.x
+                    self.goal = self.yaw + (self.nearest_item.x / 6)
                     msg = Twist()
-                    msg.angular.z = 0
+                    msg.angular.z = 0.0
                     self.cmd_vel_publisher.publish(msg)
+                    self.state = State.TURNING_TO_GOAL
             case State.TURNING_TO_GOAL:
-                if self.yaw > self.goal + 1:
+                if self.nearest_item != None:
+                    self.get_logger().info(f"Item: {self.nearest_item.x / 6}")
+                self.get_logger().info(f"Yaw: {self.yaw}, Goal: {self.goal}")
+                if self.yaw > self.goal + 10.0:
                     msg = Twist()
-                    msg.angular.z = -0.3
+                    msg.angular.z = -1.0
                     self.cmd_vel_publisher.publish(msg)
-                elif self.yaw < self.goal - 1:
+                elif self.yaw < self.goal - 10.0:
                     msg = Twist()
-                    msg.angular.z = 0.3
+                    msg.angular.z = 1.0
                     self.cmd_vel_publisher.publish(msg)
                 else:
                     msg = Twist()
-                    msg.angular.z = 0
+                    msg.angular.z = 0.0
                     self.cmd_vel_publisher.publish(msg)
                     self.state = State.HEADING_TO_GOAL
             case State.HEADING_TO_GOAL:
@@ -120,13 +143,15 @@ class RobotController(Node):
             case State.LOOKING_FOR_SPAWN:
                 if not self.homeMessage.visible:
                     msg = Twist()
-                    msg.angular.z = 1
+                    msg.angular.z = 3.0
                     self.cmd_vel_publisher.publish(msg)
                 else:
-                    self.goal = self.yaw + self.homeMessage.x
+
+                    self.goal = self.yaw + (self.homeMessage.x / 4)
                     msg = Twist()
-                    msg.angular.z = 0
+                    msg.angular.z = 0.0
                     self.cmd_vel_publisher.publish(msg)
+                    self.state = State.TURNING_TO_GOAL
 
 
     def destroy_node(self):
