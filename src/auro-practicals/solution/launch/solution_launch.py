@@ -29,10 +29,17 @@ def generate_launch_description():
         executable='robot_controller',
         output='screen',
         namespace='robot1')
+    
+    item_filter_cmd = Node(
+        package='solution',
+        executable='item_sensor_filters',
+        output='screen',
+        namespace='robot1')
 
     ld = LaunchDescription()
 
     ld.add_action(assessment_cmd)
     ld.add_action(robot_controller_cmd)
+    ld.add_action(item_filter_cmd)
 
     return ld

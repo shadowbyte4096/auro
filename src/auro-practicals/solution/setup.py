@@ -47,7 +47,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'robot_controller = solution.robot_controller:main'
+            'robot_controller = solution.robot_controller:main',
+            'item_sensor_filters = solution.item_sensor_filters:main'
         ],
     },
 )
