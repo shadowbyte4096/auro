@@ -16,6 +16,12 @@ from sensor_msgs.msg import LaserScan
 
 from tf_transformations import euler_from_quaternion
 
+X_TO_YAW_MULT = -0.261
+GOAL_YAW_ACCEPTABLE_RANGE = 0.3
+TURNING_SPEED = 0.1
+FAST_TURNING_SPEED = 0.2
+FORWARD_SPEED = 0.3
+
 class State(Enum):
     LOOKING_FOR_BALL = 0
     LOOKING_FOR_SPAWN = 1
@@ -37,10 +43,11 @@ class RobotController(Node):
         self.GoalType = GoalType.Ball
         self.goal = 0.0
         self.yaw = 0.0
-        self.items = []
         self.homeMessage = HomeZone()
         self.nearest_item = None
         self.holding_ball = False
+        self.delay = True
+        self.delayTimer = -10
         
         self.item_subscriber = self.create_subscription(
             ItemList,
@@ -56,10 +63,16 @@ class RobotController(Node):
             self.odom_callback,
             10)
         
-        self.odom_subscriber = self.create_subscription(
+        self.holders_subscriber = self.create_subscription(
             ItemHolders,
-            'item_holders',
+            '/item_holders',
             self.item_holder_callback,
+            10)
+        
+        self.home_subscriber = self.create_subscription(
+            HomeZone,
+            'home_zone',
+            self.spawn_callback,
             10)
 
         self.timer_period = 0.1 # 100 milliseconds = 10 Hz
@@ -71,7 +84,9 @@ class RobotController(Node):
                                                     msg.pose.pose.orientation.z,
                                                     msg.pose.pose.orientation.w])
         
-        self.yaw = yaw * 144
+        #self.get_logger().info(f"AAAAHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH!!") 
+        self.yaw = yaw * 144 #i thought it was in radiens but now it goes to >400 so god knows
+
 
     def item_callback(self, items):
         self.nearest_item = None
@@ -92,67 +107,86 @@ class RobotController(Node):
         self.homeMessage = msg
 
     def control_loop(self):
+        ####  difference in yaw = item.x * -0.261  ######
+
+
         self.get_logger().info(f"State: {self.state}")
-        match self.state:
-            case State.LOOKING_FOR_BALL:
-                if self.nearest_item == None:
-                    msg = Twist()
-                    msg.angular.z = 3.0
-                    self.cmd_vel_publisher.publish(msg)
-                else:
-                    self.goal = self.yaw + (self.nearest_item.x / 6)
-                    msg = Twist()
-                    msg.angular.z = 0.0
-                    self.cmd_vel_publisher.publish(msg)
-                    self.state = State.TURNING_TO_GOAL
-            case State.TURNING_TO_GOAL:
-                if self.nearest_item != None:
-                    self.get_logger().info(f"Item: {self.nearest_item.x / 6}")
-                self.get_logger().info(f"Yaw: {self.yaw}, Goal: {self.goal}")
-                if self.yaw > self.goal + 10.0:
-                    msg = Twist()
-                    msg.angular.z = -1.0
-                    self.cmd_vel_publisher.publish(msg)
-                elif self.yaw < self.goal - 10.0:
-                    msg = Twist()
-                    msg.angular.z = 1.0
-                    self.cmd_vel_publisher.publish(msg)
-                else:
-                    msg = Twist()
-                    msg.angular.z = 0.0
-                    self.cmd_vel_publisher.publish(msg)
-                    self.state = State.HEADING_TO_GOAL
-            case State.HEADING_TO_GOAL:
-                match self.GoalType:
-                    case GoalType.Ball:
-                        if not self.holding_ball:
-                            msg = Twist()
-                            msg.linear.x = 0.3
-                            self.cmd_vel_publisher.publish(msg)
-                        else:
-                            self.state = State.LOOKING_FOR_SPAWN
-                            self.GoalType = GoalType.Spawn
-                    case GoalType.Spawn:
-                        if self.holding_ball:
-                            msg = Twist()
-                            msg.linear.x = 0.3
-                            self.cmd_vel_publisher.publish(msg)
-                        else:
-                            self.state = State.LOOKING_FOR_BALL
-                            self.GoalType = GoalType.Ball
-            case State.LOOKING_FOR_SPAWN:
-                if not self.homeMessage.visible:
-                    msg = Twist()
-                    msg.angular.z = 3.0
-                    self.cmd_vel_publisher.publish(msg)
-                else:
 
-                    self.goal = self.yaw + (self.homeMessage.x / 4)
-                    msg = Twist()
-                    msg.angular.z = 0.0
-                    self.cmd_vel_publisher.publish(msg)
-                    self.state = State.TURNING_TO_GOAL
+        if (self.delay):
+            self.delayTimer += 1
+            if self.delayTimer > 3:
+                self.delay = False
+                self.delayTimer = 0
+        else:
+            match self.state:
+                case State.LOOKING_FOR_BALL:
+                    if self.nearest_item == None:
+                        msg = Twist()
+                        msg.angular.z = FAST_TURNING_SPEED
+                        self.cmd_vel_publisher.publish(msg)
+                    else:
+                        self.goal = self.yaw + (self.nearest_item.x * X_TO_YAW_MULT)
+                        msg = Twist()
+                        msg.angular.z = 0.0
+                        self.cmd_vel_publisher.publish(msg)
+                        self.state = State.TURNING_TO_GOAL
+                        self.delay = True
+                case State.TURNING_TO_GOAL:
+                    if self.nearest_item != None:
+                        self.get_logger().info(f"Item: {self.nearest_item.x * X_TO_YAW_MULT}")
+                    self.get_logger().info(f"Yaw: {self.yaw}, Goal: {self.goal}")
+                    if self.yaw > self.goal + GOAL_YAW_ACCEPTABLE_RANGE:
+                        msg = Twist()
+                        msg.angular.z = -TURNING_SPEED
+                        self.cmd_vel_publisher.publish(msg)
+                    elif self.yaw < self.goal - GOAL_YAW_ACCEPTABLE_RANGE:
+                        msg = Twist()
+                        msg.angular.z = TURNING_SPEED
+                        self.cmd_vel_publisher.publish(msg)
+                    else:
+                        msg = Twist()
+                        msg.angular.z = 0.0
+                        self.cmd_vel_publisher.publish(msg)
+                        self.state = State.HEADING_TO_GOAL
+                        self.delay = True
+                case State.HEADING_TO_GOAL:
+                    self.get_logger().info(f"Yaw: {self.yaw}, Goal: {self.goal}")
+                    match self.GoalType:
+                        case GoalType.Ball:
+                            if not self.holding_ball:
+                                msg = Twist()
+                                msg.linear.x = FORWARD_SPEED
+                                self.cmd_vel_publisher.publish(msg)
+                            else:
+                                self.state = State.LOOKING_FOR_SPAWN
+                                self.GoalType = GoalType.Spawn
+                                self.delay = True
+                        case GoalType.Spawn:
+                            if self.holding_ball:
+                                msg = Twist()
+                                msg.linear.x = FORWARD_SPEED
+                                self.cmd_vel_publisher.publish(msg)
+                            else:
+                                self.state = State.LOOKING_FOR_BALL
+                                self.GoalType = GoalType.Ball
+                                self.delay = True
+                case State.LOOKING_FOR_SPAWN:
+                    self.get_logger().info(f"homezoneVisible: {self.homeMessage.visible}")
+                    self.get_logger().info(f"homezoneX: {self.homeMessage.x}") 
+                    if not self.homeMessage.visible:
+                        msg = Twist()
+                        msg.angular.z = FAST_TURNING_SPEED
+                        self.cmd_vel_publisher.publish(msg)
+                    else:
 
+                        self.goal = self.yaw + (self.homeMessage.x * -X_TO_YAW_MULT)
+                        msg = Twist()
+                        msg.angular.z = 0.0
+                        self.cmd_vel_publisher.publish(msg)
+                        self.state = State.TURNING_TO_GOAL
+                        self.delay = True
+    
+        
 
     def destroy_node(self):
         msg = Twist()

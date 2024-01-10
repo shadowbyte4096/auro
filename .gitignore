@@ -1,5 +1,9 @@
 __pycache__
-/bin/
-/install/
-/log/
-/build/
+\bin\
+\bin
+\build\
+\build
+\install\
+\install
+\log\
+\log
