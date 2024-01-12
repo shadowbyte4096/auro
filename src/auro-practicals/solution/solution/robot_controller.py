@@ -18,11 +18,9 @@ from sensor_msgs.msg import LaserScan
 
 from tf_transformations import euler_from_quaternion
 
-#X_TO_YAW_MULT = -0.261
-#GOAL_YAW_ACCEPTABLE_RANGE = 0.3
-TURNING_SPEED = 2.0
+TURNING_SPEED = 1.0
 FORWARD_SPEED = 0.3
-OBJECT_AVOIANCE_FACTOR_SIDES = -0.2
+OBJECT_AVOIANCE_FACTOR_SIDES = -0.4
 OBJECT_AVOIANCE_FACTOR_FRONT = 0.2
 LAST_SEEN_GOAL_TIMER = 10
 
@@ -42,11 +40,16 @@ class RobotController(Node):
 
         self.get_logger().info(f"STARTING ROBOT CONTROLLER")
 
+        self.declare_parameter('robot_name', "")
+        self.robot_name = self.get_parameter('robot_name').get_parameter_value().string_value
+
         self.state = State.LOOKING_FOR_BALL
         self.goal = 0.0
         self.yaw = 0.0
         self.homeMessage = HomeZone()
         self.nearest_item = None
+        self.nearest_blue = None
+        self.nearest_green = None
         self.holding = ItemHolder()
         self.delay = True
         self.delayTimer = -10
@@ -67,7 +70,7 @@ class RobotController(Node):
             'scan',
             self.scan_callback,
             QoSPresetProfiles.SENSOR_DATA.value)
-
+        
         self.odom_subscriber = self.create_subscription(
             Odometry,
             'odom',
@@ -90,18 +93,17 @@ class RobotController(Node):
 
         self.timer_period = 0.1 # 100 milliseconds = 10 Hz
         self.timer = self.create_timer(self.timer_period, self.control_loop)
-
+    
     def odom_callback(self, msg):
         (roll, pitch, yaw) = euler_from_quaternion([msg.pose.pose.orientation.x,
                                                     msg.pose.pose.orientation.y,
                                                     msg.pose.pose.orientation.z,
                                                     msg.pose.pose.orientation.w])
         
-        #self.yaw = yaw * 144
         self.yaw = -math.degrees(yaw)
         if self.yaw < 0:
             self.yaw += 360 #normalise to 0-360
-    
+
     def nearest_items_callback(self, msg):
         self.nearest_item = msg.nearest
         self.nearest_blue = msg.blue
@@ -114,19 +116,26 @@ class RobotController(Node):
         holders = msg.data
         self.holding = ItemHolder()
         for holder in holders:
-            self.holding = holder
+            if holder.robot_id == self.robot_name:
+                self.holding = holder
+                break
 
     def spawn_callback(self, msg):
         self.homeMessage = msg
     
     def scan_callback(self, msg):
-        left_object  = min(msg.ranges[0:90])
-        right_object = min(msg.ranges[271:360])
-        self.object_avoidance_sides = (right_object ** OBJECT_AVOIANCE_FACTOR_SIDES) - (left_object ** OBJECT_AVOIANCE_FACTOR_SIDES)
+        left_object  = min(msg.ranges[0:100])
+        right_object = min(msg.ranges[261:360])
+        self.object_avoidance_sides = 1 * ((right_object ** OBJECT_AVOIANCE_FACTOR_SIDES) - (left_object ** OBJECT_AVOIANCE_FACTOR_SIDES))
+        #self.get_logger().info(f"{self.object_avoidance_sides}")
+        
         front_object = min(msg.ranges[351:359] + msg.ranges[0:10])
-        self.object_avoidance_front = 1 - 3 ** -front_object
-
-
+        #self.object_avoidance_front = 1 - 3 ** -front_object
+        new = self.object_avoidance_front = 0.2 * front_object
+        self.object_avoidance_front = (0.45*((front_object-1)**(1/7)))+0.45
+        if new < self.object_avoidance_front:
+            self.object_avoidance_front = new
+        self.get_logger().info(f"{self.object_avoidance_front}")
 
     def find_better_ball(self):
         if (self.nearest_blue != None) and (self.holding.item_colour != "BLUE"):
@@ -136,6 +145,11 @@ class RobotController(Node):
             self.cmd_vel_publisher.publish(msg)
         elif (self.nearest_green != None) and (self.holding.item_colour == "RED"):
             self.colour_filter = "GREEN"
+            self.state = State.HEADING_TO_BALL
+            msg = Twist()
+            self.cmd_vel_publisher.publish(msg)
+        elif (self.nearest_item != None) and (self.holding == ItemHolder()):
+            self.colour_filter = None
             self.state = State.HEADING_TO_BALL
             msg = Twist()
             self.cmd_vel_publisher.publish(msg)
@@ -159,14 +173,18 @@ class RobotController(Node):
                     return True
             elif (self.colour_filter == "GREEN") and (self.nearest_green == None):
                 self.time_since_goal_seen += 1
-                if self.time_since_goal_seen > 5:
+                if self.time_since_goal_seen > LAST_SEEN_GOAL_TIMER:
                     self.time_since_goal_seen = 0
                     return True
+        self.time_since_goal_seen = 0
         return False
                     
     def look_for_ball(self):
         if self.nearest_item == None:
             msg = Twist()
+            self.turn_direction = TURN_RIGHT
+            if (self.yaw < 180):
+                self.turn_direction = TURN_LEFT
             msg.angular.z = TURNING_SPEED * self.turn_direction
             self.cmd_vel_publisher.publish(msg)
         else:
@@ -178,9 +196,11 @@ class RobotController(Node):
     def look_for_spawn(self):
         if not self.homeMessage.visible:
             msg = Twist()
+            self.turn_direction = TURN_RIGHT
+            if (self.yaw > 180):
+                self.turn_direction = TURN_LEFT
             msg.angular.z = TURNING_SPEED * self.turn_direction
             self.cmd_vel_publisher.publish(msg)
-            self.find_better_ball()
         else:
             msg = Twist()
             msg.angular.z = 0.0
@@ -195,8 +215,6 @@ class RobotController(Node):
             msg = Twist()
             self.cmd_vel_publisher.publish(msg)
             self.state = State.LOOKING_FOR_SPAWN
-            self.turn_direction = random.choice([TURN_LEFT, TURN_RIGHT])
-            self.find_better_ball()
             self.delay = True
         else:
             nearest = self.nearest_item
@@ -207,11 +225,12 @@ class RobotController(Node):
                     nearest = self.nearest_green
             if (nearest != None):
                 estimated_distance = 69.0 * float(nearest.diameter) ** -0.89
-
+                extra_speed = (0.25/(2*estimated_distance+1)) * estimated_distance
                 msg = Twist()
-                msg.linear.x = (FORWARD_SPEED + 0.25 * estimated_distance) * self.object_avoidance_front
-                msg.angular.z = nearest.x / 320.0 + self.object_avoidance_sides
+                msg.linear.x = (FORWARD_SPEED/2 + extra_speed) * self.object_avoidance_front
 
+                msg.angular.z = nearest.x / 320.0 + self.object_avoidance_sides
+                #self.get_logger().info(f"{msg.angular.z}")
                 self.cmd_vel_publisher.publish(msg)
             else:
                 msg = Twist()
@@ -223,38 +242,41 @@ class RobotController(Node):
             if (self.homeMessage.visible):
                 msg = Twist()
                 msg.linear.x = FORWARD_SPEED * self.object_avoidance_front
-                msg.angular.z = self.homeMessage.x / 320.0 + self.object_avoidance_sides
+                downwards_pressure = (self.yaw - 180) * 0.05
+                msg.angular.z = self.homeMessage.x / 220.0 + self.object_avoidance_sides + downwards_pressure
+                #self.get_logger().info(f"{msg.angular.z}")
 
                 self.cmd_vel_publisher.publish(msg)
             else:
                 msg = Twist()
+                self.turn_direction = TURN_RIGHT
+                if (self.yaw > 180):
+                    self.turn_direction = TURN_LEFT
                 msg.angular.z = TURNING_SPEED * self.turn_direction
                 self.cmd_vel_publisher.publish(msg)
         else:
             self.colour_filter = None
             self.state = State.LOOKING_FOR_BALL
-            self.turn_direction = random.choice([TURN_LEFT, TURN_RIGHT])
             self.delay = True
     
     def control_loop(self):
-        ####  difference in yaw = item.x * -0.261  ######
-
-        self.get_logger().info(f"State: {self.state}")
-
         # if (self.delay):
         #     self.delayTimer += 1
         #     if self.delayTimer > 3:
         #         self.delay = False
         #         self.delayTimer = 0
         #     return
-        
+
+        # self.get_logger().info(f"{self.state}")
+
+        self.find_better_ball()
         match self.state:
             case State.LOOKING_FOR_BALL:
                 self.look_for_ball()
             case State.LOOKING_FOR_SPAWN:
                 self.look_for_spawn()
             case State.HEADING_TO_BALL:
-                self.get_logger().info(f"Colour: {self.colour_filter}")
+                #self.get_logger().info(f"looking for {self.colour_filter}")
                 self.head_to_ball()
             case State.HEADING_TO_SPAWN:
                 self.head_to_spawn()

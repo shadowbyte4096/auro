@@ -27,19 +27,11 @@ def robot_controller_actions(context : LaunchContext):
 
         robot_name = 'robot' + str(robot_number)
 
-        params = initial_poses[robot_name]
-        params.update({"robot_name": robot_name}) 
-
         group = GroupAction([
 
             PushRosNamespace(robot_name),
             SetRemap('/tf', 'tf'),
             SetRemap('/tf_static', 'tf_static'),
-            
-            Node(
-                package='solution',
-                executable='item_sensor_filters',
-                output='screen'),
 
             Node(
                 package='solution',
@@ -51,7 +43,7 @@ def robot_controller_actions(context : LaunchContext):
                 # prefix=['wt.exe --window 0 new-tab wsl.exe -e bash -ic'], # Opens in new tab
                 # prefix=['wt.exe wsl.exe -e bash -ic'], # Opens in new window
                 output='screen',
-                parameters=[params]),
+                parameters=[initial_poses[robot_name]]),
 
             # Node(
             #     package='turtlebot3_gazebo',
@@ -99,9 +91,12 @@ def generate_launch_description():
         default_value='data_log',
         description='Filename prefix to use for data logs')
 
-    rviz_config = PathJoinSubstitution([FindPackageShare('assessment'), 'rviz', 'namespaced.rviz'])
+    rviz_config = PathJoinSubstitution([FindPackageShare('assessment'), 'rviz', 'namespaced_nav2.rviz'])
     rviz_windows = PathJoinSubstitution([FindPackageShare('assessment'), 'config', 'rviz_windows.yaml'])
     # rviz_windows = PathJoinSubstitution([FindPackageShare(package_name), 'config', 'custom_rviz_windows.yaml'])
+    map = PathJoinSubstitution([FindPackageShare('assessment'), 'maps', 'assessment_world.yaml'])
+    params = PathJoinSubstitution([FindPackageShare('assessment'), 'params', 'nav2_params_namespaced.yaml'])
+    # params = PathJoinSubstitution([FindPackageShare(package_name), 'params', 'custom_nav2_params_namespaced.yaml'])
 
     assessment_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -121,7 +116,9 @@ def generate_launch_description():
                           'obstacles': 'true',
                           'item_manager': 'true',
                           'random_seed': random_seed,
-                          'use_nav2': 'false',
+                          'use_nav2': 'True',
+                          'map': map,
+                          'params_file': params,
                           'headless': 'false',
                           'limit_real_time_factor': 'true',
                           'wait_for_items': 'false',

@@ -37,7 +37,7 @@ setup(
     name=package_name,
     version='0.0.0',
     packages=find_packages(exclude=['test']),
-    data_files=package_files(data_files, ['models/', 'launch/', 'worlds/', 'rviz/']),
+    data_files=package_files(data_files, ['models/', 'launch/', 'worlds/', 'rviz/', 'config/', 'params/']),
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='user',
@@ -48,7 +48,8 @@ setup(
     entry_points={
         'console_scripts': [
             'robot_controller = solution.robot_controller:main',
-            'item_sensor_filters = solution.item_sensor_filters:main'
+            'data_logger = solution.data_logger:main',
+            'item_sensor_filters = solution.item_sensor_filters:main',
         ],
     },
 )

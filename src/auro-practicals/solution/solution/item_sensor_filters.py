@@ -25,6 +25,7 @@ class ItemSensorFilter(Node):
         self.nearest_iteams_publisher = self.create_publisher(NearestItemTypes, 'items/near', 10)
     
     def item_callback(self, items):
+
         def replace_nearest(nearest):
             if nearest == None:
                 return item

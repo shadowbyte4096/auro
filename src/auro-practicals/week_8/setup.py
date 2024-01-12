@@ -52,6 +52,8 @@ setup(
             'joint_state_republisher = week_8.joint_state_republisher:main',
             'path_publisher = week_8.path_publisher:main',
             'simple_commander = week_8.simple_commander:main',
+            'autonomous_navigation = week_8.autonomous_navigation:main',
+            'autonomous_navigation_multithreaded = week_8.autonomous_navigation_multithreaded:main',
         ],
     },
 )
