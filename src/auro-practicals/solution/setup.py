@@ -48,8 +48,8 @@ setup(
     entry_points={
         'console_scripts': [
             'robot_controller = solution.robot_controller:main',
-            'data_logger = solution.data_logger:main',
             'item_sensor_filters = solution.item_sensor_filters:main',
+            'data_logger = solution.data_logger:main',
         ],
     },
 )

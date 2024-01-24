@@ -27,11 +27,14 @@ def rviz_action(context : LaunchContext):
                           '<window_y>': context.launch_configurations['window_y'],
                           '<window_width>': context.launch_configurations['window_width'],
                           '<window_height>': context.launch_configurations['window_height']})
+    #namespaced_rviz_config_file.update({"log-level": "warn"})
+
+    arguments=['--ros-args', '--log-level', 'debug']
 
     start_namespaced_rviz_cmd = Node(
         package='rviz2',
         executable='rviz2',
-        arguments=['-d', namespaced_rviz_config_file],
+        arguments=['-d', namespaced_rviz_config_file, '--ros-args', '--log-level', 'warn'],
         output='screen')
 
     exit_event_handler_namespaced = RegisterEventHandler(

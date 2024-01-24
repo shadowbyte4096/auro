@@ -9,7 +9,6 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node, SetParameter, SetRemap, PushRosNamespace, RosTimer
 
-
 def robot_controller_actions(context : LaunchContext):
 
     num_robots = int(context.launch_configurations['num_robots'])
@@ -27,11 +26,19 @@ def robot_controller_actions(context : LaunchContext):
 
         robot_name = 'robot' + str(robot_number)
 
+        params = initial_poses[robot_name]
+        params.update({"robot_name": robot_name}) 
+
         group = GroupAction([
 
             PushRosNamespace(robot_name),
             SetRemap('/tf', 'tf'),
             SetRemap('/tf_static', 'tf_static'),
+
+            Node(
+                package='solution',
+                executable='item_sensor_filters',
+                output='screen'),
 
             Node(
                 package='solution',
@@ -43,7 +50,7 @@ def robot_controller_actions(context : LaunchContext):
                 # prefix=['wt.exe --window 0 new-tab wsl.exe -e bash -ic'], # Opens in new tab
                 # prefix=['wt.exe wsl.exe -e bash -ic'], # Opens in new window
                 output='screen',
-                parameters=[initial_poses[robot_name]]),
+                parameters=[params]),
 
             # Node(
             #     package='turtlebot3_gazebo',
@@ -68,7 +75,7 @@ def generate_launch_description():
 
     declare_num_robots_cmd = DeclareLaunchArgument(
         'num_robots',
-        default_value='1',
+        default_value='3',
         description='Number of robots to spawn')
     
     declare_random_seed_cmd = DeclareLaunchArgument(
@@ -121,8 +128,8 @@ def generate_launch_description():
                           'params_file': params,
                           'headless': 'false',
                           'limit_real_time_factor': 'true',
-                          'wait_for_items': 'false',
-                          # 'extra_gazebo_args': '--verbose',
+                          'wait_for_items': 'true',
+                          'gazebo_verbose': 'false'
                           }.items()
     )
 
