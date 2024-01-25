@@ -15,7 +15,7 @@ class ItemSensorFilter(Node):
 
         self.get_logger().info(f"STARTING ITEM FILTER")
 
-        self.item_sensor_subsciber = self.create_subscription(
+        self.item_sensor_subscriber = self.create_subscription(
             ItemList,
             'items',
             self.item_callback,

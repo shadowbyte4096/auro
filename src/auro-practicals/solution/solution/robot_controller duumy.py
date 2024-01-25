@@ -68,11 +68,8 @@ class RobotController(Node):
 
         self.holding = Colour.NONE
         self.last_goal = self.initial_pose
-        self.last_goal_state = GoalState.GO_HOME
 
         self.goal_state = GoalState.GO_HOME
-        self.last_goal_state = GoalState.GO_HOME #for debug
-
         self.continue_timeout = self.get_clock().now()
         self.goal_set_time = self.get_clock().now()
         self.last_highest_colour_seen = Colour.NONE
@@ -129,15 +126,7 @@ class RobotController(Node):
         self.add_marker(msg.blue, Colour.BLUE)
     
     def item_holder_callback(self, msg):
-        holders = msg.data
-        self.holding = Colour.NONE
-        for holder in holders:
-            if holder.robot_id != self.robot_name:
-                continue
-            elif not holder.holding_item:
-                continue
-            old = self.holding
-            self.holding = self.colour_id_to_enum(holder.item_colour)
+        pass
     
     def coordination_callback(self, msg):
         self.available_homes = msg.homes
@@ -197,34 +186,7 @@ class RobotController(Node):
 
 
     def control_loop(self):
-        highest_seen = self.highest_colour_seen()
-
-        if highest_seen == self.last_highest_colour_seen:
-            if self.holding == self.last_colour_held: #only set new goal when state changes
-                time_since_goal_set = self.get_clock().now() - self.goal_set_time
-                if (time_since_goal_set < Duration(seconds=1)): #reset goal every 1 second when state hasnt changed
-                    return
-
-        self.goal_set_time = self.get_clock().now()
-        self.last_highest_colour_seen = highest_seen
-        self.last_colour_held = self.holding
-
-        self.navigate()
-    
-    def navigate(self, filters = []):
-        goal = self.find_new_goal(filters) #what the robot should be doing
-        target = self.enact_goal(goal) #how the robot should do it
-        if target == None: #dont do anything when continuing
-            return
-        
-        if not self.is_target_available(target):
-            filters.append(goal)
-            self.get_logger().info(f"filters: {filters}")
-            self.navigate(filters)
-        else:
-            self.navigator.goToPose(target)
-            self.publish_coordination_msg(target.pose.position)
-            self.last_goal = target
+        pass
     
     def find_new_goal(self, filters):
         highest_seen = self.last_highest_colour_seen
@@ -239,7 +201,6 @@ class RobotController(Node):
 
         for (condition, goal_state) in conditions:
             if condition and (goal_state not in filters):
-                self.last_goal_state = goal_state
                 return goal_state
         
         #should only happen if there are filters invloved

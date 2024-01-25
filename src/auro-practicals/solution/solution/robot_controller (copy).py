@@ -138,6 +138,8 @@ class RobotController(Node):
                 continue
             old = self.holding
             self.holding = self.colour_id_to_enum(holder.item_colour)
+            if (old != self.holding):
+                self.navigate()
     
     def coordination_callback(self, msg):
         self.available_homes = msg.homes
@@ -239,7 +241,6 @@ class RobotController(Node):
 
         for (condition, goal_state) in conditions:
             if condition and (goal_state not in filters):
-                self.last_goal_state = goal_state
                 return goal_state
         
         #should only happen if there are filters invloved

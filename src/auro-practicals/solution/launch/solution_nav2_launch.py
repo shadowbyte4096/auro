@@ -44,7 +44,7 @@ def robot_controller_actions(context : LaunchContext):
                 package='solution',
                 executable='robot_controller',
                 # prefix=['xfce4-terminal --tab --execute'], # Opens in new tab
-                # prefix=['xfce4-terminal --execute'], # Opens in new window
+                # prefix=['xfce4-terminal --window --execute'], # Opens in new window
                 # prefix=['gnome-terminal --tab --execute'], # Opens in new tab
                 # prefix=['gnome-terminal --window --execute'], # Opens in new window
                 # prefix=['wt.exe --window 0 new-tab wsl.exe -e bash -ic'], # Opens in new tab
@@ -142,6 +142,11 @@ def generate_launch_description():
         arguments=['--path', data_log_path,
                    '--filename', data_log_filename,
                    '--random_seed', random_seed])
+    
+    robot_coordinator_cmd = Node(
+        package='solution',
+        executable='robot_coordinator',
+        output='screen',)
 
     timeout_cmd = RosTimer(                                         
             period = experiment_duration,
@@ -161,6 +166,7 @@ def generate_launch_description():
     ld.add_action(declare_data_log_filename_cmd)
 
     ld.add_action(assessment_cmd)
+    ld.add_action(robot_coordinator_cmd)
     ld.add_action(robot_controller_cmd)
     ld.add_action(data_logger_cmd)
     ld.add_action(timeout_cmd)
