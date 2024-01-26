@@ -1,4 +1,5 @@
 import sys
+import math
 
 import rclpy
 from rclpy.node import Node
@@ -6,7 +7,7 @@ from rclpy.signals import SignalHandlerOptions
 from rclpy.executors import ExternalShutdownException
 
 from assessment_interfaces.msg import ItemList
-from solution_interfaces.msg import HomesAndTargets, RobotTarget
+from solution_interfaces.msg import HomesAndTargets, RobotPoint
 
 class RobotCoordinator(Node):
 
@@ -15,7 +16,7 @@ class RobotCoordinator(Node):
 
         self.all_homes = []
         self.targets = []
-        self.target_history = []
+        self.positions = []
 
         self.robot1_subscriber = self.create_subscription(
             HomesAndTargets,
@@ -56,27 +57,61 @@ class RobotCoordinator(Node):
             return
         target_msg = msg.targets[0]
         robot = target_msg.robot_id
-
         self.targets = [target_msg if robot == t.robot_id else t for t in self.targets]
         if target_msg not in self.targets:
             self.targets.append(target_msg)
+        
+        if len(msg.positions) != 1:
+            self.get_logger().info(f"POSIION NOT SET PROPERLY") #shouldnt happen so log
+            return
+        position_msg = msg.positions[0]
+        robot = position_msg.robot_id
+        self.positions = [position_msg if robot == t.robot_id else t for t in self.positions]
+        if position_msg not in self.positions:
+            self.positions.append(position_msg)
 
     def control_loop(self):
 
-        targets = [t.target for t in self.targets]
+        targets = [t.point for t in self.targets]
         available_homes = [h for h in self.all_homes if h.pose.position not in targets]
+        close_robots = self.find_close_robots()
+        for robot in close_robots:
+
+        ###########################################################################
+            #make robots go home
+        ###########################################################################
+            
 
         homes_and_targets = HomesAndTargets()
         homes_and_targets.homes = available_homes
         homes_and_targets.targets = self.targets
+        homes_and_targets.positions = self.positions
 
         self.home_and_targets_publisher.publish(homes_and_targets)
         
+    def find_close_robots(self):
+        close_robots = []
+        for robot in self.positions:
+            for other in self.positions:
+                if robot == other:
+                    continue
+                elif is_near(robot.point, other.point):
+                    close_robots.append(robot)
+        return close_robots 
+    
+    
 
     def destroy_node(self):
         self.get_logger().info(f"Stopping")
         super().destroy_node()
 
+def is_near(point_a, point_b):
+    diffX = point_a.x - point_b.x
+    diffY = point_a.y - point_b.y
+    distance = math.sqrt(diffX ** 2 + diffY ** 2)
+    if (distance < 1):
+        return True
+    return False
 
 def main(args=None):
 

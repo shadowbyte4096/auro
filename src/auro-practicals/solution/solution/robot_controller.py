@@ -10,7 +10,7 @@ from rclpy.duration import Duration
 from visualization_msgs.msg import Marker
 
 from assessment_interfaces.msg import ItemHolder, ItemHolders
-from solution_interfaces.msg import NearestItemTypes, Item, HomesAndTargets, RobotTarget
+from solution_interfaces.msg import NearestItemTypes, Item, HomesAndTargets, RobotPoint
 from geometry_msgs.msg import PoseStamped, Point
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from nav_msgs.msg import Odometry
@@ -81,6 +81,7 @@ class RobotController(Node):
         self.all_homes = []
         self.available_homes = []
         self.targets_to_avoid = []
+        self.positions_to_avoid = []
 
         self.iterations_since_goal = 0
 
@@ -141,8 +142,9 @@ class RobotController(Node):
     
     def coordination_callback(self, msg):
         self.available_homes = msg.homes
-        self.targets_to_avoid = [t.target for t in msg.targets if t.robot_id != self.robot_name]
         self.all_homes += [home for home in msg.homes if home not in self.all_homes]
+        self.targets_to_avoid = [t.point for t in msg.targets if t.robot_id != self.robot_name]
+        self.positions_to_avoid = [p.point for p in msg.positions if p.robot_id != self.robot_name]
     
     def odom_callback(self, msg):
         (roll, pitch, yaw) = euler_from_quaternion([msg.pose.pose.orientation.x,
@@ -209,9 +211,9 @@ class RobotController(Node):
         self.last_highest_colour_seen = highest_seen
         self.last_colour_held = self.holding
 
-        self.navigate()
+        self.navigate([])
     
-    def navigate(self, filters = []):
+    def navigate(self, filters):
         goal = self.find_new_goal(filters) #what the robot should be doing
         target = self.enact_goal(goal) #how the robot should do it
         if target == None: #dont do anything when continuing
@@ -221,15 +223,18 @@ class RobotController(Node):
             filters.append(goal)
             self.get_logger().info(f"filters: {filters}")
             self.navigate(filters)
+            return
         else:
             self.navigator.goToPose(target)
             self.publish_coordination_msg(target.pose.position)
             self.last_goal = target
+            return
     
     def find_new_goal(self, filters):
         highest_seen = self.last_highest_colour_seen
 
         conditions = [
+            ((self.is_near_robot()), GoalState.GO_HOME), #better to go home rather than crash
             ((self.holding == Colour.BLUE), GoalState.GO_HOME),
             ((highest_seen <= self.holding), GoalState.CONTINUE),
             ((self.holding == Colour.NONE), GoalState.GO_TO_NEAREST),
@@ -243,7 +248,10 @@ class RobotController(Node):
                 return goal_state
         
         #should only happen if there are filters invloved
-        #and its better to go home rather than crash
+        if len(filters) > 0:
+            self.get_logger().info(f"TOO MANY FILTERS MADE IT HARD TO FIND ANYTHING {len(filters)}")
+        else:
+            self.get_logger().info(f"COULDNT FIND ANYTHING {len(filters)}")
         return GoalState.GO_HOME 
 
     def enact_goal(self, goal):
@@ -297,7 +305,12 @@ class RobotController(Node):
     
     def is_target_available(self, target):
         #can't use all all(not near()) as will return true on empty list
-        return not any(self.is_near(target.pose.position, t) for t in self.targets_to_avoid)
+        r = not any(self.is_near(target.pose.position, t) for t in self.targets_to_avoid)
+        if not r:
+            t = target.pose.position
+            ts = ", ".join([f"({a.x},{a.y})" for a in self.targets_to_avoid])
+            self.get_logger().info(f"({t.x},{t.y}): {ts}")
+        return r    
 
     def is_near(self, point_a, point_b):
         diffX = point_a.x - point_b.x
@@ -306,14 +319,24 @@ class RobotController(Node):
         if (distance < 1):
             return True
         return False
+    
+    def is_near_robot(self):
+        robot_pos = Point()
+        robot_pos.x = self.pos_x
+        robot_pos.y = self.pos_y
+
+        return any(self.is_near(robot_pos, t) for t in self.positions_to_avoid)
 
     def publish_coordination_msg(self, target_position):
         home_and_target = HomesAndTargets()
         home_and_target.homes = [self.initial_pose]
-        target = RobotTarget()
-        target.robot_id = self.robot_name
-        target.target = target_position
+        target = position = RobotPoint()
+        target.robot_id = position.robot_id = self.robot_name
+        target.point = target_position
+        position.point.x = self.pos_x
+        position.point.y = self.pos_y
         home_and_target.targets = [target]
+        home_and_target.positions = [position]
         self.coordination_publisher.publish(home_and_target)
 
     def nearest_available_home(self):

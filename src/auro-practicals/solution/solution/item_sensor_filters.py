@@ -26,8 +26,10 @@ class ItemSensorFilter(Node):
     
     def item_callback(self, items):
 
-        def replace_nearest(nearest):
-            if nearest == None:
+        def replace_nearest(item, nearest):
+            if item.y > 17:
+                return nearest
+            elif nearest == None:
                 return item
             elif item.diameter > nearest.diameter:
                 return item
@@ -51,16 +53,16 @@ class ItemSensorFilter(Node):
         nearest_green = None
         nearest_red = None
         for item in items.data:
-            nearest_item = replace_nearest(nearest_item)
+            nearest_item = replace_nearest(item, nearest_item)
             match (item.colour):
                 case "BLUE":
-                    nearest_blue = replace_nearest(nearest_blue)
+                    nearest_blue = replace_nearest(item, nearest_blue)
                     continue
                 case "GREEN":
-                    nearest_green = replace_nearest(nearest_green)
+                    nearest_green = replace_nearest(item, nearest_green)
                     continue
                 case "RED":
-                    nearest_red = replace_nearest(nearest_red)
+                    nearest_red = replace_nearest(item, nearest_red)
         
         nearest_item = translate_item(nearest_item)
         nearest_blue = translate_item(nearest_blue)
