@@ -19,7 +19,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Item.msg"
   "msg/NearestItemTypes.msg"
   "msg/RobotPoint.msg"
-  "msg/HomesAndTargets.msg"
+  "msg/RobotPoseStamped.msg"
+  "msg/RobotInfo.msg"
+  "msg/CoordinatorInfo.msg"
   DEPENDENCIES geometry_msgs # Add packages that above messages depend on, in this case geometry_msgs for Example.msg
 )
 

@@ -10,7 +10,7 @@ from rclpy.duration import Duration
 from visualization_msgs.msg import Marker
 
 from assessment_interfaces.msg import ItemHolder, ItemHolders
-from solution_interfaces.msg import NearestItemTypes, Item, HomesAndTargets, RobotPoint
+from solution_interfaces.msg import NearestItemTypes, Item, CoordinatorInfo, RobotInfo, RobotPoint
 from geometry_msgs.msg import PoseStamped, Point
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from nav_msgs.msg import Odometry
@@ -68,7 +68,6 @@ class RobotController(Node):
 
         self.holding = Colour.NONE
         self.last_goal = self.initial_pose
-        self.last_goal_state = GoalState.GO_HOME
 
         self.goal_state = GoalState.GO_HOME
         self.last_goal_state = GoalState.GO_HOME #for debug
@@ -81,6 +80,7 @@ class RobotController(Node):
         self.all_homes = []
         self.available_homes = []
         self.targets_to_avoid = []
+        self.near_to_robot = None
         self.positions_to_avoid = []
 
         self.iterations_since_goal = 0
@@ -106,19 +106,19 @@ class RobotController(Node):
             10)
         
         self.coordination_subscriber = self.create_subscription(
-            HomesAndTargets,
+            CoordinatorInfo,
             '/coordination',
             self.coordination_callback,
             10)
 
         self.item_publisher = self.create_publisher(Marker, 'goal', 10)
-        self.coordination_publisher = self.create_publisher(HomesAndTargets, 'coordination', 10)
+        self.coordination_publisher = self.create_publisher(RobotInfo, 'coordination', 10)
+        self.position_publisher = self.create_publisher(RobotPoint, 'position', 10)
 
         self.timer_period = 0.1 # 100 milliseconds = 10 Hz
         self.timer = self.create_timer(self.timer_period, self.control_loop)
 
-        for x in range(10):
-            self.get_logger().info(f"FINSIHED STARTING ROBOT CONTROLLER")
+        self.get_logger().info(f"FINSIHED STARTING ROBOT CONTROLLER")
     
     def nearest_items_callback(self, msg):
         self.nearest_item = msg.nearest
@@ -137,15 +137,15 @@ class RobotController(Node):
                 continue
             elif not holder.holding_item:
                 continue
-            old = self.holding
             self.holding = self.colour_id_to_enum(holder.item_colour)
     
     def coordination_callback(self, msg):
-        self.available_homes = msg.homes
-        self.all_homes += [home for home in msg.homes if home not in self.all_homes]
+        self.available_homes = msg.available_homes
+
+        self.all_homes += [home for home in msg.available_homes if home not in self.all_homes]
         self.targets_to_avoid = [t.point for t in msg.targets if t.robot_id != self.robot_name]
-        self.positions_to_avoid = [p.point for p in msg.positions if p.robot_id != self.robot_name]
-    
+        self.near_to_robot = next((p for p in msg.avoidance_positions if p.robot_id == self.robot_name), None)
+        
     def odom_callback(self, msg):
         (roll, pitch, yaw) = euler_from_quaternion([msg.pose.pose.orientation.x,
                                                     msg.pose.pose.orientation.y,
@@ -199,6 +199,7 @@ class RobotController(Node):
 
 
     def control_loop(self):
+        self.publish_position_msg()
         highest_seen = self.highest_colour_seen()
 
         if highest_seen == self.last_highest_colour_seen:
@@ -214,18 +215,29 @@ class RobotController(Node):
         self.navigate([])
     
     def navigate(self, filters):
+
+        if self.near_to_robot != None:
+            target = self.near_to_robot.pose
+            self.navigator.goToPose(target)
+            self.publish_coordination_msg(target.pose.position)
+            self.last_goal = target
+            return
+
         goal = self.find_new_goal(filters) #what the robot should be doing
         target = self.enact_goal(goal) #how the robot should do it
         if target == None: #dont do anything when continuing
             return
         
-        if not self.is_target_available(target):
+        if not self.is_target_available(target) and goal != GoalState.GO_HOME: #dont want an infinite loop
             filters.append(goal)
-            self.get_logger().info(f"filters: {filters}")
+            self.get_logger().info(f"GOAL: {goal}, filters: {filters}")
             self.navigate(filters)
             return
         else:
             self.navigator.goToPose(target)
+            if goal == GoalState.GO_HOME and self.robot_name == "robot2":
+                t = target.pose.position
+                self.get_logger().info(f"SENDING 2: ({t.x},{t.y})")
             self.publish_coordination_msg(target.pose.position)
             self.last_goal = target
             return
@@ -234,7 +246,7 @@ class RobotController(Node):
         highest_seen = self.last_highest_colour_seen
 
         conditions = [
-            ((self.is_near_robot()), GoalState.GO_HOME), #better to go home rather than crash
+            #((self.is_near_robot()), GoalState.GO_HOME), #better to go home rather than crash
             ((self.holding == Colour.BLUE), GoalState.GO_HOME),
             ((highest_seen <= self.holding), GoalState.CONTINUE),
             ((self.holding == Colour.NONE), GoalState.GO_TO_NEAREST),
@@ -251,7 +263,7 @@ class RobotController(Node):
         if len(filters) > 0:
             self.get_logger().info(f"TOO MANY FILTERS MADE IT HARD TO FIND ANYTHING {len(filters)}")
         else:
-            self.get_logger().info(f"COULDNT FIND ANYTHING {len(filters)}")
+            self.get_logger().warn(f"COULDNT FIND ANYTHING {len(filters)}")
         return GoalState.GO_HOME 
 
     def enact_goal(self, goal):
@@ -268,7 +280,7 @@ class RobotController(Node):
                 ball = self.colour_enum_to_ball(Colour.NONE)
                 target = self.find_ball_position(ball)
             case GoalState.GO_TO_RED:
-                self.get_logger().info(f"WANT TO FIND RED??") # should never happen under this implementation so log
+                self.get_logger().warn(f"WANT TO FIND RED??") # should never happen under this implementation so log
                 ball = self.colour_enum_to_ball(Colour.RED)
                 target = self.find_ball_position(ball)
             case GoalState.GO_TO_GREEN:
@@ -297,7 +309,7 @@ class RobotController(Node):
             target.pose.position.y = y + self.pos_y
             target.pose.orientation.w = estimated_angle
         else:
-            self.get_logger().info(f"FINDING INVISIBLE BALL??") # should never happen so log
+            self.get_logger().warn(f"FINDING INVISIBLE BALL??") # should never happen so log
             target.pose.position.x = self.pos_x + 1
             target.pose.position.y = self.pos_y + 1
             target.pose.orientation.w = self.yaw
@@ -309,7 +321,7 @@ class RobotController(Node):
         if not r:
             t = target.pose.position
             ts = ", ".join([f"({a.x},{a.y})" for a in self.targets_to_avoid])
-            self.get_logger().info(f"({t.x},{t.y}): {ts}")
+            self.get_logger().warn(f"({t.x},{t.y}): {ts}")
         return r    
 
     def is_near(self, point_a, point_b):
@@ -328,29 +340,43 @@ class RobotController(Node):
         return any(self.is_near(robot_pos, t) for t in self.positions_to_avoid)
 
     def publish_coordination_msg(self, target_position):
-        home_and_target = HomesAndTargets()
-        home_and_target.homes = [self.initial_pose]
-        target = position = RobotPoint()
+        robot_msg = RobotInfo()
+        robot_msg.initial_home = self.initial_pose
+        target = RobotPoint()
+        position = RobotPoint()
         target.robot_id = position.robot_id = self.robot_name
         target.point = target_position
         position.point.x = self.pos_x
         position.point.y = self.pos_y
-        home_and_target.targets = [target]
-        home_and_target.positions = [position]
-        self.coordination_publisher.publish(home_and_target)
+        robot_msg.current_target = target
+        robot_msg.current_position = position
+        self.coordination_publisher.publish(robot_msg)
+        if self.robot_name == "robot2":
+            self.get_logger().info(f"SENDING 3: ({target_position.x},{target_position.y})")
+    
+    def publish_position_msg(self):
+        position = RobotPoint()
+        position.robot_id = self.robot_name
+        position.point.x = self.pos_x
+        position.point.y = self.pos_y
+        self.position_publisher.publish(position)
 
     def nearest_available_home(self):
         if self.last_goal in self.all_homes: #override if already targetting a home
             return self.last_goal
 
         if len(self.available_homes) < 1:
-            self.get_logger().info(f"NO AVAILABLE HOMES?!!") # should never happen so log
+            self.get_logger().warn(f"NO AVAILABLE HOMES?!!") # should never happen so log
             return self.initial_pose
 
         smallest = self.available_homes[0]
         for home in self.available_homes:
             if (self.distance_to_pose(home) < self.distance_to_pose(smallest)):
                 smallest = home
+        
+        h = smallest.pose.position
+        if self.robot_name == "robot2":
+            self.get_logger().info(f"SENDING 1: ({h.x},{h.y})")
         return smallest
 
     def distance_to_pose(self, pose_stamped):

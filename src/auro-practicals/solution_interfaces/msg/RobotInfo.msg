@@ -1,0 +1,3 @@
+RobotPoint current_target
+RobotPoint current_position
+geometry_msgs/PoseStamped initial_home
