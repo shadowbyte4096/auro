@@ -40,22 +40,22 @@ def robot_controller_actions(context : LaunchContext):
                 executable='item_sensor_filters',
                 output='screen'),
 
-            Node(
-                package='solution',
-                executable='robot_controller',
-                # prefix=['xfce4-terminal --tab --execute'], # Opens in new tab
-                # prefix=['xfce4-terminal --window --execute'], # Opens in new window
-                # prefix=['gnome-terminal --tab --execute'], # Opens in new tab
-                # prefix=['gnome-terminal --window --execute'], # Opens in new window
-                # prefix=['wt.exe --window 0 new-tab wsl.exe -e bash -ic'], # Opens in new tab
-                # prefix=['wt.exe wsl.exe -e bash -ic'], # Opens in new window
-                output='screen',
-                parameters=[params]),
-
             # Node(
-            #     package='turtlebot3_gazebo',
-            #     executable='turtlebot3_drive',
-            #     output='screen'),
+            #     package='solution',
+            #     executable='robot_controller',
+            #     # prefix=['xfce4-terminal --tab --execute'], # Opens in new tab
+            #     # prefix=['xfce4-terminal --window --execute'], # Opens in new window
+            #     # prefix=['gnome-terminal --tab --execute'], # Opens in new tab
+            #     # prefix=['gnome-terminal --window --execute'], # Opens in new window
+            #     # prefix=['wt.exe --window 0 new-tab wsl.exe -e bash -ic'], # Opens in new tab
+            #     # prefix=['wt.exe wsl.exe -e bash -ic'], # Opens in new window
+            #     output='screen',
+            #     parameters=[params]),
+
+            Node(
+                package='turtlebot3_gazebo',
+                executable='turtlebot3_drive',
+                output='screen'),
 
         ])
 

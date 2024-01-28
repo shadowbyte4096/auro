@@ -50,8 +50,6 @@ class RobotController(Node):
         self.pos_y = self.initial_y
         self.yaw = self.initial_yaw
 
-        self.current_nav_goal = PoseStamped()
-
         self.navigator = BasicNavigator()
 
         self.initial_pose = PoseStamped()
@@ -69,7 +67,6 @@ class RobotController(Node):
         self.holding = Colour.NONE
         self.last_goal = self.initial_pose
 
-        self.goal_state = GoalState.GO_HOME
         self.last_goal_state = GoalState.GO_HOME #for debug
 
         self.continue_timeout = self.get_clock().now()
@@ -81,9 +78,6 @@ class RobotController(Node):
         self.available_homes = []
         self.targets_to_avoid = []
         self.near_to_robot = None
-        self.positions_to_avoid = []
-
-        self.iterations_since_goal = 0
 
         self.navigator.waitUntilNav2Active()
 
@@ -215,7 +209,6 @@ class RobotController(Node):
         self.navigate([])
     
     def navigate(self, filters):
-
         if self.near_to_robot != None:
             target = self.near_to_robot.pose
             self.navigator.goToPose(target)
@@ -235,9 +228,6 @@ class RobotController(Node):
             return
         else:
             self.navigator.goToPose(target)
-            if goal == GoalState.GO_HOME and self.robot_name == "robot2":
-                t = target.pose.position
-                self.get_logger().info(f"SENDING 2: ({t.x},{t.y})")
             self.publish_coordination_msg(target.pose.position)
             self.last_goal = target
             return
@@ -246,7 +236,6 @@ class RobotController(Node):
         highest_seen = self.last_highest_colour_seen
 
         conditions = [
-            #((self.is_near_robot()), GoalState.GO_HOME), #better to go home rather than crash
             ((self.holding == Colour.BLUE), GoalState.GO_HOME),
             ((highest_seen <= self.holding), GoalState.CONTINUE),
             ((self.holding == Colour.NONE), GoalState.GO_TO_NEAREST),
@@ -263,7 +252,7 @@ class RobotController(Node):
         if len(filters) > 0:
             self.get_logger().info(f"TOO MANY FILTERS MADE IT HARD TO FIND ANYTHING {len(filters)}")
         else:
-            self.get_logger().warn(f"COULDNT FIND ANYTHING {len(filters)}")
+            self.get_logger().warn(f"COULDNT FIND ANYTHING")
         return GoalState.GO_HOME 
 
     def enact_goal(self, goal):
@@ -297,7 +286,7 @@ class RobotController(Node):
         target.header.frame_id = 'map'
         target.header.stamp = self.get_clock().now().to_msg()
         if ball.visible:
-            estimated_distance = (69.0 * (float(ball.diameter) ** -0.89)) + 0.1 #aims a little further then nessessary
+            estimated_distance = (69.0 * (float(ball.diameter) ** -0.89)) + 0.1 #aims further then nessessary
             ball_x_mult = (0.003 * estimated_distance) + 0.085 #since camera is mounted near front mult changes with distance
             angle_diff = -ball_x_mult * ball.x
             estimated_angle = self.yaw + angle_diff
@@ -316,13 +305,8 @@ class RobotController(Node):
         return target
     
     def is_target_available(self, target):
-        #can't use all all(not near()) as will return true on empty list
-        r = not any(self.is_near(target.pose.position, t) for t in self.targets_to_avoid)
-        if not r:
-            t = target.pose.position
-            ts = ", ".join([f"({a.x},{a.y})" for a in self.targets_to_avoid])
-            self.get_logger().warn(f"({t.x},{t.y}): {ts}")
-        return r    
+        #can't use all(not near()) as will return true on empty list
+        return not any(self.is_near(target.pose.position, t) for t in self.targets_to_avoid)
 
     def is_near(self, point_a, point_b):
         diffX = point_a.x - point_b.x
@@ -331,13 +315,6 @@ class RobotController(Node):
         if (distance < 1):
             return True
         return False
-    
-    def is_near_robot(self):
-        robot_pos = Point()
-        robot_pos.x = self.pos_x
-        robot_pos.y = self.pos_y
-
-        return any(self.is_near(robot_pos, t) for t in self.positions_to_avoid)
 
     def publish_coordination_msg(self, target_position):
         robot_msg = RobotInfo()
@@ -351,8 +328,6 @@ class RobotController(Node):
         robot_msg.current_target = target
         robot_msg.current_position = position
         self.coordination_publisher.publish(robot_msg)
-        if self.robot_name == "robot2":
-            self.get_logger().info(f"SENDING 3: ({target_position.x},{target_position.y})")
     
     def publish_position_msg(self):
         position = RobotPoint()
@@ -374,9 +349,6 @@ class RobotController(Node):
             if (self.distance_to_pose(home) < self.distance_to_pose(smallest)):
                 smallest = home
         
-        h = smallest.pose.position
-        if self.robot_name == "robot2":
-            self.get_logger().info(f"SENDING 1: ({h.x},{h.y})")
         return smallest
 
     def distance_to_pose(self, pose_stamped):
