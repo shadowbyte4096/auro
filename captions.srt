@@ -1,0 +1,83 @@
+1
+00:00:00,000 --> 00:00:05,000
+This video has been sped up by 2x as the simualtion was run for 10 mins as it was running very slow
+
+2
+00:00:05,000 --> 00:00:09,000
+The command used to launch the simulation was 'ros2 launch solution solution_nav2_launch.py random_seed:=0
+
+3
+00:00:09,000 --> 00:00:12,000
+To start of with the robot's initial positions are set for the nav2 pose estimation
+
+4
+00:00:12,000 --> 00:00:17,000
+The robots now look for the nearest item and head towards it
+
+5
+00:00:17,000 --> 00:00:22,000
+Notice the balls on rviz are a visualisation of the nearest item of each colour that the robot can see 
+
+6
+00:00:22,000 --> 00:00:27,000
+The items wont match the position properly as they are where the robot thinks the item is.
+
+7
+00:00:27,000 --> 00:00:32,000
+Sometimes there are odities in the visualisation (such as 2 or 0 items of the same colour). This is due to the item regonistion flickering. 
+
+8
+00:00:34,000 --> 00:00:39,000
+Robot 2 (bottom right) missed the item it was aiming for and can no longer see any items so heads home to try again
+
+9
+00:00:39,000 --> 00:00:42,000
+It Then accidentally drives through an item, picking it up
+
+10
+00:00:42,000 --> 00:00:47,000
+Robot 3 (top right) has now picked up the green but sees an item of higher value and so is targetting that
+
+11
+00:00:47,000 --> 00:00:52,000
+Robot 1 (bottom left) found a blue and since there are no higher value items heads stright home
+
+12
+00:01:00,000 --> 00:01:05,000
+Robot 2 sees an item so heads towards it but then see a closer item so priortises that
+
+13
+00:01:15,000 --> 00:01:20,000
+There is no attempt made by robot 3 to avoid the green when holding a blue
+
+14
+00:01:20,000 --> 00:01:25,000
+Robot 2 collects the green and can see no items of higher value to goes home
+
+15
+00:01:25,000 --> 00:01:30,000
+Robot 2 then sees a blue so targets that instead
+
+16
+00:01:36,000 --> 00:01:39,000
+Robot 1 sees an item so targets it
+
+17
+00:01:44,000 --> 00:01:49,000
+The nearest starting position for robot 2 is taken so it targets the next nearest
+
+18
+00:02:00,000 --> 00:02:05,000
+Robot 3 keeps updating is target for what it views as the nearest
+
+19
+00:02:18,000 --> 00:02:23,000
+Robot 2 and 3 got too close to each other so are both sent to a start position
+
+20
+00:03:17,000 --> 00:03:25,000
+Robot 1 sees a blue so targets it, loses sight of it but carries on towards it and then still cant see it so gives up and goes home
+
+21
+00:03:50,000 --> 00:03:57,000
+Robots 1 and 3 got too close so are sent to starting positions, the one for robot 1 is far away so that they hopefully go away from each other
